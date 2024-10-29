@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 from collections.abc import Iterable
 
 from slurmer.params import ParameterDict, Parameters, split_variables_and_arguments, normalize_parameters
-from slurmer.utils import warning, info, success
+from slurmer.utils import print_output
 
 
 def normalize_slurm(slurm: str | Dict[str, str]) -> str:
@@ -47,10 +47,28 @@ class Grid:
 
 
     def __post_init__(self):
-        self.params = list(normalize_parameters(self.params))
+        # Normalize parameters to a list of dictionaries which always has at least one element
+        self.params = list(normalize_parameters(self.params)) or [{}]
         self.slurm = normalize_slurm(self.slurm)
         if isinstance(self.dependency, str) and self.dependency:
             self.dependency = [self.dependency]
+
+    def should_skip(self, param_dict: ParameterDict, return_reason=False) -> bool | Tuple[bool, str]:
+        skip, reason = False, ""
+        if self.precondition:
+            precond_path = self.precondition.format(**param_dict)
+            if not os.path.exists(os.path.expanduser(precond_path)):
+                skip, reason = True, f"Precondition {precond_path} does not exist"
+
+        if self.completion:
+            completion_path = self.completion.format(**param_dict)
+            if os.path.exists(os.path.expanduser(completion_path)):
+                skip, reason = True, f"Completion check file exists at {completion_path}"
+
+        return (skip, reason) if return_reason else skip
+
+    def job_name(self, param_dict: ParameterDict) -> str:
+        return self.name.format(**param_dict)
 
 
 class JobSubmitter:
@@ -95,7 +113,7 @@ class JobSubmitter:
 
     def format_command(self,
                        grid: Grid,
-                       params: ParameterDict,
+                       param_dict: ParameterDict,
                        job_name: str,
                        previous_job_id: Optional[str] = None,
                        interactive: bool = False) -> str:
@@ -106,7 +124,7 @@ class JobSubmitter:
         if grid.env:
             cmd_parts.append(f"source ~/.bashrc && conda activate {grid.env} &&")
 
-        variables, arguments = split_variables_and_arguments(params)
+        variables, arguments = split_variables_and_arguments(param_dict)
         for key, value in variables.items():
             cmd_parts.append(f'{key}="{value}"')
 
@@ -151,14 +169,14 @@ class JobSubmitter:
         """Submit a job and return its ID."""
 
         if dry_run:
-            print(cmd)
-            return "DRY_RUN"
+            print_output(cmd, color=None, stdout=True)
+            return "-1"
         else:
-            info(cmd)
+            print_output(cmd, color=None, stdout=False)
 
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
         if result.returncode == 0:
-            success(result.stdout.rstrip())
+            print_output(result.stdout.rstrip(), color="green", stdout=True)
             job_id_match = re.search(r"Submitted batch job (\d+)", result.stdout)
             if job_id_match:
                 job_id = job_id_match.group(1)
@@ -169,69 +187,46 @@ class JobSubmitter:
         else:
             raise RuntimeError(f"Error submitting job: {result.stderr}")
 
-    def should_submit_job(self,
-                          grid: Grid,
-                          job_name: str,
-                          params: ParameterDict) -> bool:
-        """Determine if a job should be submitted."""
-
-
-        # Check if job is already running
-        if job_name in self.running_jobs:
-            warning(f"{job_name}: Job already running, skipping...")
-            return False
-
-        # Check precondition if specified
-        if grid.precondition:
-            precond_path = grid.precondition.format(**params)
-            if not os.path.exists(os.path.expanduser(precond_path)):
-                warning(f"{job_name}: Precondition {precond_path} does not exist, skipping...")
-                return False
-
-        # Check completion file if specified
-        if grid.completion:
-            completion_path = grid.completion.format(**params)
-            if os.path.exists(os.path.expanduser(completion_path)):
-                warning(f"{job_name}: Completion check file exists at {completion_path}, skipping...")
-                return False
-
-        return True
-
-    def submit_grid(self, grid: Grid, dry_run: bool = False, interactive: bool = False):
+    def submit_grid(self, grid_name: str, dry_run: bool = False, interactive: bool = False):
         """Submit all jobs for a single grid."""
-        # Process each parameter combination
-        all_params = grid.params
-        if not all_params:
-            all_params = [{}]
 
-        for params in all_params:
-            # Format job name
-            job_name = grid.name.format(**params)
+        grid = self.grids[grid_name]
+        if all(grid.should_skip(param_dict) for param_dict in grid.params):
+            print_output(f"{grid_name}: Skipping {len(grid.params)} jobs", color="red", stdout=False)
+            return
 
-            # Check if job should be submitted
-            if not self.should_submit_job(grid, job_name, params):
+        for param_dict in grid.params:
+            job_name = grid.job_name(param_dict)
+
+            skip, reason = grid.should_skip(param_dict, return_reason=True)
+            if skip:
+                print_output(f"{job_name}: {reason}", color="red", stdout=False)
+                continue
+
+            if job_name in self.running_jobs:
+                print_output(f"{job_name}: Job already running", color="red", stdout=False)
                 continue
 
             # Handle job chaining
             previous_job_id = None
             for _ in range(grid.chain):
-                cmd = self.format_command(grid, params, job_name, previous_job_id, interactive)
+                cmd = self.format_command(grid, param_dict, job_name, previous_job_id, interactive)
                 job_id = self.submit_job(cmd, grid.name, dry_run)
                 if job_id:
                     previous_job_id = job_id
 
+
     def submit_all(self, selection: list, dry_run: bool = False, interactive: bool = False):
         """Submit all grids in the configuration."""
         if not selection:
-            for grid in self.grids.values():
-                self.submit_grid(grid, dry_run, interactive)
+            for grid_name in self.grids:
+                self.submit_grid(grid_name, dry_run, interactive)
         else:
             for grid_name in selection:
                 if grid_name not in self.grids:
                     raise ValueError(f"Grid {grid_name} not found in configuration")
 
-                grid = self.grids[grid_name]
-                self.submit_grid(grid, dry_run, interactive)
+                self.submit_grid(grid_name, dry_run, interactive)
 
 def main():
     parser = argparse.ArgumentParser(description="Submit SLURM jobs based on YAML configuration")

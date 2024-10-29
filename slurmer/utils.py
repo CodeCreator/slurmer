@@ -9,17 +9,18 @@ def redirect_stdout_to_stderr():
     yield
     sys.stdout = old_stdout
 
+_COLORS = {
+    "red": '\033[31m',
+    "green": '\033[32m',
+}
 _RESET = '\033[0m'
-_RED = '\033[31m'
-_GREEN = '\033[32m'
 
-def warning(msg):
-    with redirect_stdout_to_stderr():
-        print(_RED + msg + _RESET)
 
-def success(msg):
-    print(_GREEN + msg + _RESET)
+def print_output(content, color=None, stdout=True):
+    if color:
+        content = _COLORS[color] + content + _RESET
 
-def info(msg):
-    with redirect_stdout_to_stderr():
-        print(msg)
+    if stdout:
+        print(content)
+    else:
+        sys.stderr.write(content + '\n')

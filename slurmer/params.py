@@ -34,10 +34,10 @@ ParameterDict = Dict[str, ParameterValue]
 Parameters = Dict[str, ParameterValue | SpecialParameter | List[ParameterValue]]
 
 
-def split_variables_and_arguments(params: ParameterDict) -> Tuple[ParameterDict, ParameterDict]:
+def split_variables_and_arguments(param_dict: ParameterDict) -> Tuple[ParameterDict, ParameterDict]:
     """Split parameters into variables and arguments."""
     variables, arguments = {}, {}
-    for key, value in params.items():
+    for key, value in param_dict.items():
         if key.startswith('$') or key.startswith('-'):
             arguments[key] = value
         else:
