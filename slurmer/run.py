@@ -21,7 +21,7 @@ def normalize_slurm(slurm: str | Dict[str, str]) -> str:
     if isinstance(slurm, str):
         return slurm
     return " ".join(
-        (f"{k} {v}" if k.startswith("--") else f"{k}={v}")
+        (f"{k}={v}" if k.startswith("--") else f"{k} {v}")
         for k, v in slurm.items()
     )
 
