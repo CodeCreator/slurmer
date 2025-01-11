@@ -20,12 +20,15 @@ class SpecialParameter:
 
     def __iter__(self) -> Iterable[str | int]:
         if self.glob:
-            yield from glob.iglob(
+            files = sorted(glob.glob(
                 os.path.expanduser(self.glob),
                 root_dir=(
                     os.path.expanduser(self.root_dir) if self.root_dir else None
                 )
-            )
+            ))
+           # if not files:
+           #     raise FileNotFoundError(f"No match for glob '{self.glob}'")
+            yield from files
         elif self.range:
             yield from list(range(*self.range))
 
