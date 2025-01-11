@@ -12,6 +12,8 @@ def redirect_stdout_to_stderr():
 _COLORS = {
     "red": '\033[31m',
     "green": '\033[32m',
+    "yellow": '\033[33m',
+    "blue": '\033[34m',
 }
 _RESET = '\033[0m'
 

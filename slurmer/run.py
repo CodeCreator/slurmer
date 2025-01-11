@@ -43,29 +43,25 @@ class Grid:
     precondition: str | None = None
 
     chain: int = 1
-    dependency: str | List[str] = field(default_factory=list)
 
 
     def __post_init__(self):
         # Normalize parameters to a list of dictionaries which always has at least one element
         self.params = list(normalize_parameters(self.params)) or [{}]
         self.slurm = normalize_slurm(self.slurm)
-        if isinstance(self.dependency, str) and self.dependency:
-            self.dependency = [self.dependency]
 
-    def should_skip(self, param_dict: ParameterDict, return_reason=False) -> bool | Tuple[bool, str]:
-        skip, reason = False, ""
+    def skip_reason(self, param_dict: ParameterDict) -> str:
         if self.precondition:
             precond_path = self.precondition.format(**param_dict)
             if not os.path.exists(os.path.expanduser(precond_path)):
-                skip, reason = True, f"Precondition {precond_path} does not exist"
+                return "Missing Preconditon"
 
         if self.completion:
             completion_path = self.completion.format(**param_dict)
             if os.path.exists(os.path.expanduser(completion_path)):
-                skip, reason = True, f"Completion check file exists at {completion_path}"
+                return "Already Completed"
 
-        return (skip, reason) if return_reason else skip
+        return "None"
 
     def job_name(self, param_dict: ParameterDict) -> str:
         return self.name.format(**param_dict)
@@ -74,42 +70,17 @@ class Grid:
 class JobSubmitter:
     def __init__(self, config_path: str):
         with open(config_path) as f:
-            raw_config = yaml.safe_load(f)
-            self.grids: Dict[str, Grid] = {
-                name: Grid(**{"name": name, **config})
-                for name, config in raw_config.items()
-            }
-        self.job_ids: Dict[str, List[str]] = {}
-        self.running_jobs = self.get_running_jobs()
+            self.config = yaml.safe_load(f)
+        self.running_jobs = self.get_job_queue()
 
-    def get_running_jobs(self) -> List[str]:
-        """Get list of job names currently running for the current user."""
+    def get_job_queue(self) -> List[str]:
+        """Get list of job names currently queued or runnning for the current user."""
         result = subprocess.run(
             ["squeue", "-u", os.environ["USER"], "-h", "-o", "%j"],
             capture_output=True,
             text=True
         )
         return result.stdout.strip().split('\n') if result.stdout.strip() else []
-
-    def get_dependency_string(self,
-                              grid: Grid,
-                            previous_job_id: Optional[str] = None) -> str:
-        """Generate dependency string for SLURM job."""
-        dependency_parts = []
-
-        # Handle chain dependencies
-        if previous_job_id:
-            dependency_parts.append(f"afterany:{previous_job_id}")
-
-        # Handle cross-grid dependencies
-        for dep_grid in grid.dependency:
-            if dep_grid in self.job_ids:
-                dep_jobs = ":".join(self.job_ids[dep_grid])
-                dependency_parts.append(f"afterok:{dep_jobs}")
-
-        if dependency_parts:
-            return "--dependency=" + ",".join(dependency_parts)
-        return ""
 
     def format_command(self,
                        grid: Grid,
@@ -137,10 +108,9 @@ class JobSubmitter:
             if grid.slurm:
                 cmd_parts.extend(grid.slurm.split())
 
-            # Add dependency parameters
-            dep_string = self.get_dependency_string(grid, previous_job_id)
-            if dep_string:
-                cmd_parts.append(dep_string)
+            # Handle dependency chaining
+            if previous_job_id:
+                cmd_parts.append(f"--dependency=afterany:{previous_job_id}")
 
             # Add job name
             cmd_parts.extend(["-J", job_name])
@@ -164,69 +134,70 @@ class JobSubmitter:
 
     def submit_job(self,
                    cmd: str,
-                   grid_name: str,
                    dry_run: bool = False) -> str:
         """Submit a job and return its ID."""
 
         if dry_run:
-            print_output(cmd, color=None, stdout=True)
+            print_output(cmd, stdout=True)
             return "-1"
         else:
-            print_output(cmd, color=None, stdout=False)
+            print_output(cmd, stdout=False)
 
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
         if result.returncode == 0:
-            print_output(result.stdout.rstrip(), color="green", stdout=True)
+            print_output(result.stdout.rstrip(), stdout=True)
             job_id_match = re.search(r"Submitted batch job (\d+)", result.stdout)
             if job_id_match:
                 job_id = job_id_match.group(1)
-                if grid_name not in self.job_ids:
-                    self.job_ids[grid_name] = []
-                self.job_ids[grid_name].append(job_id)
                 return job_id
         else:
             raise RuntimeError(f"Error submitting job: {result.stderr}")
 
-    def submit_grid(self, grid_name: str, dry_run: bool = False, interactive: bool = False):
+    def submit_grid(self, grid_id: str, dry_run: bool = False, interactive: bool = False):
         """Submit all jobs for a single grid."""
 
-        grid = self.grids[grid_name]
-        if all(grid.should_skip(param_dict) for param_dict in grid.params):
-            print_output(f"{grid_name}: Skipping {len(grid.params)} jobs", color="red", stdout=False)
-            return
+        grid_config = self.config[grid_id]
+        if "name" not in grid_config:
+            grid_config["name"] = grid_id
 
+        grid = Grid(**grid_config)
+        print_output(f"[{grid_id}]", color="yellow", stdout=False)
+
+        skip_reasons = []
+        param_dicts_to_run = []
         for param_dict in grid.params:
-            job_name = grid.job_name(param_dict)
+            skip_reason = grid.skip_reason(param_dict)
+            if grid.job_name(param_dict) in self.running_jobs:
+                skip_reason = "Job already running"
 
-            skip, reason = grid.should_skip(param_dict, return_reason=True)
-            if skip:
-                print_output(f"{job_name}: {reason}", color="red", stdout=False)
-                continue
+            skip_reasons.append(skip_reason)
+            if skip_reason == "None":
+                param_dicts_to_run.append(param_dict)
 
-            if job_name in self.running_jobs:
-                print_output(f"{job_name}: Job already running", color="red", stdout=False)
-                continue
+        counts = {reason: skip_reasons.count(reason) for reason in set(skip_reasons)}
+        counts_formatted = ", ".join(f"{k}: {v}" for k, v in counts.items())
+        num_skipping = sum(counts.values()) - counts.get("None", 0)
+        print_output(f" - Skipping {num_skipping} jobs ({counts_formatted})", color="yellow", stdout=False)
 
+        for param_dict in param_dicts_to_run:
             # Handle job chaining
             previous_job_id = None
             for _ in range(grid.chain):
-                cmd = self.format_command(grid, param_dict, job_name, previous_job_id, interactive)
-                job_id = self.submit_job(cmd, grid.name, dry_run)
+                cmd = self.format_command(grid, param_dict, grid.job_name(param_dict), previous_job_id, interactive)
+                job_id = self.submit_job(cmd, dry_run)
                 if job_id:
                     previous_job_id = job_id
 
-
-    def submit_all(self, selection: list, dry_run: bool = False, interactive: bool = False):
+    def submit_many(self, selection: list, dry_run: bool = False, interactive: bool = False):
         """Submit all grids in the configuration."""
         if not selection:
-            for grid_name in self.grids:
-                self.submit_grid(grid_name, dry_run, interactive)
-        else:
-            for grid_name in selection:
-                if grid_name not in self.grids:
-                    raise ValueError(f"Grid {grid_name} not found in configuration")
+            selection = list(self.config.keys())
 
-                self.submit_grid(grid_name, dry_run, interactive)
+        for grid_id in selection:
+            if grid_id not in self.config:
+                raise ValueError(f"Grid {grid_id} not found in configuration")
+
+            self.submit_grid(grid_id, dry_run, interactive)
 
 def main():
     parser = argparse.ArgumentParser(description="Submit SLURM jobs based on YAML configuration")
@@ -237,7 +208,7 @@ def main():
     args = parser.parse_args()
 
     submitter = JobSubmitter(args.file)
-    submitter.submit_all(args.grids, dry_run=args.dry_run, interactive=args.interactive)
+    submitter.submit_many(args.grids, dry_run=args.dry_run, interactive=args.interactive)
 
 
 if __name__ == "__main__":
