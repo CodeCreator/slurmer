@@ -60,6 +60,15 @@ def format_parameter(param: ParameterValue) -> str:
         return f"{param}"
 
 
+def flatten_parameters(params: Parameters | List[Parameters]) -> List[Parameters]:
+    if isinstance(params, dict):
+        return list(iter(SpecialParameter(**params)))
+    elif isinstance(params, list):
+        return sum((flatten_parameters(p) for p in params), [])
+    else:
+        return [params]
+
+
 def normalize_parameters(params: Parameters | List[Parameters]) -> Iterable[ParameterDict]:
     """Normalize parameters into a list of simple dictionaries with all combinations."""
     if isinstance(params, dict):
@@ -69,12 +78,7 @@ def normalize_parameters(params: Parameters | List[Parameters]) -> Iterable[Para
         # First, process any special parameters
         grid_params = {}
         for key, value in param_set.items():
-            if isinstance(value, dict):
-                grid_params[key] = list(iter(SpecialParameter(**value)))
-            elif isinstance(value, list):
-                grid_params[key] = value
-            else:
-                grid_params[key] = [value]
+            grid_params[key] = flatten_parameters(value)
 
         # Generate all combinations of grid parameters
         keys = list(grid_params.keys())
