@@ -6,6 +6,8 @@ import subprocess
 from dataclasses import dataclass, field
 import re
 import os
+import re
+import math
 import glob
 import itertools
 import argparse
@@ -26,6 +28,15 @@ def normalize_slurm(slurm: str | Dict[str, str]) -> str:
     )
 
 
+
+def unsafe_format(format_str, **kwargs):
+    kwargs["os"] = os
+    kwargs["re"] = re
+    kwargs["math"] = math
+    exec('result__ = f"' + format_str + '"', kwargs)
+    return kwargs["result__"]
+
+
 @dataclass
 class Grid:
     name: str
@@ -44,7 +55,6 @@ class Grid:
 
     chain: int = 1
 
-
     def __post_init__(self):
         # Normalize parameters to a list of dictionaries which always has at least one element
         self.params = list(normalize_parameters(self.params)) or [{}]
@@ -52,19 +62,19 @@ class Grid:
 
     def skip_reason(self, param_dict: ParameterDict) -> str:
         if self.precondition:
-            precond_path = self.precondition.format(**param_dict)
+            precond_path = unsafe_format(self.precondition, **param_dict)
             if not os.path.exists(os.path.expanduser(precond_path)):
                 return "Missing Preconditon"
 
         if self.completion:
-            completion_path = self.completion.format(**param_dict)
+            completion_path = unsafe_format(self.completion, **param_dict)
             if os.path.exists(os.path.expanduser(completion_path)):
                 return "Already Completed"
 
         return "None"
 
     def job_name(self, param_dict: ParameterDict) -> str:
-        return self.name.format(**param_dict)
+        return unsafe_format(self.name, **param_dict)
 
 
 class JobSubmitter:
