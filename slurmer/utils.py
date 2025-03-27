@@ -1,3 +1,6 @@
+import os
+import re
+import math
 import sys
 from contextlib import contextmanager
 
@@ -26,3 +29,12 @@ def print_output(content, color=None, stdout=True):
         print(content)
     else:
         sys.stderr.write(content + '\n')
+        
+        
+def unsafe_format(format_str, **kwargs):
+    kwargs["os"] = os
+    kwargs["re"] = re
+    kwargs["math"] = math
+    exec('result__ = f"' + format_str + '"', kwargs)
+    return kwargs["result__"]
+

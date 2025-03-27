@@ -4,18 +4,16 @@ from __future__ import annotations
 import yaml
 import subprocess
 from dataclasses import dataclass, field
-import re
 import os
 import re
-import math
-import glob
-import itertools
 import argparse
 from typing import Dict, List, Optional, Tuple
-from collections.abc import Iterable
 
 from slurmer.params import ParameterDict, Parameters, split_variables_and_arguments, normalize_parameters
-from slurmer.utils import print_output
+from slurmer.utils import print_output, unsafe_format
+
+
+
 
 
 def normalize_slurm(slurm: str | Dict[str, str]) -> str:
@@ -27,14 +25,6 @@ def normalize_slurm(slurm: str | Dict[str, str]) -> str:
         for k, v in slurm.items()
     )
 
-
-
-def unsafe_format(format_str, **kwargs):
-    kwargs["os"] = os
-    kwargs["re"] = re
-    kwargs["math"] = math
-    exec('result__ = f"' + format_str + '"', kwargs)
-    return kwargs["result__"]
 
 
 @dataclass
