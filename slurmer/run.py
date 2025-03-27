@@ -9,7 +9,7 @@ import re
 import argparse
 from typing import Dict, List, Optional, Tuple
 
-from slurmer.params import ParameterDict, Parameters, split_variables_and_arguments, normalize_parameters
+from slurmer.params import ParameterDict, Parameters, split_variables_and_arguments, normalize_parameters, format_parameter
 from slurmer.utils import print_output, unsafe_format
 
 
@@ -97,7 +97,7 @@ class JobSubmitter:
 
         variables, arguments = split_variables_and_arguments(param_dict)
         for key, value in variables.items():
-            cmd_parts.append(f'{key}="{value}"')
+            cmd_parts.append(f'{key}="{format_parameter(value)}"')
 
         if interactive:
             cmd_parts.append(grid.command if grid.command else "bash -l " + grid.script)
@@ -121,11 +121,11 @@ class JobSubmitter:
         sorted_arguments = sorted(arguments.items(), key=lambda x: (not x[0].startswith('$'), x[0]))
         for key, value in sorted_arguments:
             if key.startswith('$'):
-                cmd_parts.append(str(value))
+                cmd_parts.append(f"'{format_parameter(value)}'")
             elif value is None:
                 cmd_parts.append(key)
             else:
-                cmd_parts.extend([key, f'"{value}"'])
+                cmd_parts.extend([key, f'"{format_parameter(value)}"'])
 
         if grid.command and not interactive:
             cmd_parts.append("\nEOF")

@@ -48,6 +48,18 @@ def split_variables_and_arguments(param_dict: ParameterDict) -> Tuple[ParameterD
     return variables, arguments
 
 
+def format_parameter(param: ParameterValue) -> str:
+    if isinstance(param, bool):
+        # More canonical in bash to use "true" or "false" rather than "True" or "False"
+        # Maybe make this configurable in the future
+        return str(param).lower() 
+    elif param is None:
+        # More canonical in bash to use "null" rather than "None" or "none"
+        return "null"
+    else:
+        return f"{param}"
+
+
 def normalize_parameters(params: Parameters | List[Parameters]) -> Iterable[ParameterDict]:
     """Normalize parameters into a list of simple dictionaries with all combinations."""
     if isinstance(params, dict):
