@@ -87,7 +87,8 @@ class JobSubmitter:
                        param_dict: ParameterDict,
                        job_name: str,
                        previous_job_id: Optional[str] = None,
-                       interactive: bool = False) -> str:
+                       interactive: bool = False,
+                       slurm_overrides: Optional[List[str]] = None) -> str:
         """Format the complete command for job submission."""
         cmd_parts = []
 
@@ -114,6 +115,9 @@ class JobSubmitter:
 
             # Add job name
             cmd_parts.extend(["-J", job_name])
+
+            if slurm_overrides: 
+                cmd_parts.extend(slurm_overrides)
 
             cmd_parts.append((r"<<<EOF\n#!\bin\bash -l\n" + grid.command) if grid.command else grid.script)
 
@@ -153,7 +157,7 @@ class JobSubmitter:
         else:
             raise RuntimeError(f"Error submitting job: {result.stderr}")
 
-    def submit_grid(self, grid_id: str, dry_run: bool = False, interactive: bool = False):
+    def submit_grid(self, grid_id: str, dry_run: bool = False, interactive: bool = False, slurm_overrides: Optional[List[str]] = None):
         """Submit all jobs for a single grid."""
 
         grid_config = self.config[grid_id]
@@ -183,12 +187,12 @@ class JobSubmitter:
             # Handle job chaining
             previous_job_id = None
             for _ in range(grid.chain):
-                cmd = self.format_command(grid, param_dict, grid.job_name(param_dict), previous_job_id, interactive)
+                cmd = self.format_command(grid, param_dict, grid.job_name(param_dict), previous_job_id, interactive, slurm_overrides)
                 job_id = self.submit_job(cmd, dry_run)
                 if job_id:
                     previous_job_id = job_id
 
-    def submit_many(self, selection: list, dry_run: bool = False, interactive: bool = False):
+    def submit_many(self, selection: list, dry_run: bool = False, interactive: bool = False, slurm_overrides: Optional[List[str]] = None):
         """Submit all grids in the configuration."""
         if not selection:
             selection = list(self.config.keys())
@@ -197,7 +201,7 @@ class JobSubmitter:
             if grid_id not in self.config:
                 raise ValueError(f"Grid {grid_id} not found in configuration")
 
-            self.submit_grid(grid_id, dry_run, interactive)
+            self.submit_grid(grid_id, dry_run, interactive, slurm_overrides)
 
 def main():
     parser = argparse.ArgumentParser(description="Submit SLURM jobs based on YAML configuration")
@@ -205,10 +209,11 @@ def main():
     parser.add_argument("-f", "--file", default="runs.yaml", help="Path to YAML configuration file")
     parser.add_argument("-d", "--dry-run", action="store_true", help="Print commands without submitting")
     parser.add_argument("-i", "--interactive", action="store_true", help="Get interactive commands instead")
+    parser.add_argument("--slurm-arg", type=str, nargs="*", help="Override slurm commands globally")
     args = parser.parse_args()
 
     submitter = JobSubmitter(args.file)
-    submitter.submit_many(args.grids, dry_run=args.dry_run, interactive=args.interactive)
+    submitter.submit_many(args.grids, dry_run=args.dry_run, interactive=args.interactive, slurm_overrides=args.slurm_arg)
 
 
 if __name__ == "__main__":
