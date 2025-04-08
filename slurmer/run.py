@@ -206,13 +206,13 @@ class JobSubmitter:
 def main():
     parser = argparse.ArgumentParser(description="Submit SLURM jobs based on YAML configuration")
     parser.add_argument("grids", nargs="*", help="Execute only the specified grids")
-    parser.add_argument("-f", "--file", default="runs.yaml", help="Path to YAML configuration file")
+    parser.add_argument("-c", "--config", default="runs.yaml", help="Path to YAML configuration file")
     parser.add_argument("-d", "--dry-run", action="store_true", help="Print commands without submitting")
     parser.add_argument("-i", "--interactive", action="store_true", help="Get interactive commands instead")
     parser.add_argument("--slurm-arg", type=str, nargs="*", help="Override slurm commands globally")
     args = parser.parse_args()
 
-    submitter = JobSubmitter(args.file)
+    submitter = JobSubmitter(args.config)
     submitter.submit_many(args.grids, dry_run=args.dry_run, interactive=args.interactive, slurm_overrides=args.slurm_arg)
 
 
