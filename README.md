@@ -30,23 +30,22 @@ pip install -e .
 example_grid:
   name: "job-{dataset}-{lr}"
   script: "train.sh"
-  env: "ml-env"
   params:
     dataset: ["cifar10", "mnist"]
     lr: [0.001, 0.01]
     epochs: 100
     "-b": 128  # batch size as argument to the script!
   slurm:
-    partition: "gpu"
+    gres: "gpu:1"
   completion: "~/results/{dataset}_model_lr{lr}.pth"
 ```
 
 2. Submit all your jobs by running `slurmer`. This will submit the following jobs:
 ```bash
-dataset="cifar10" lr="0.001" epochs="100" sbatch --partition=gpu --gres=gpu:1 --time=8:00:00 -J job-cifar10-0.001 train.sh -b "128"
-dataset="cifar10" lr="0.01" epochs="100" sbatch --partition=gpu --gres=gpu:1 --time=8:00:00 -J job-cifar10-0.01 train.sh -b "128"
-dataset="mnist" lr="0.001" epochs="100" sbatch --partition=gpu --gres=gpu:1 --time=8:00:00 -J job-mnist-0.001 train.sh -b "128"
-dataset="mnist" lr="0.01" epochs="100" sbatch --partition=gpu --gres=gpu:1 --time=8:00:00 -J job-mnist-0.01 train.sh -b "128"
+dataset="cifar10" lr="0.001" epochs="100" sbatch gres gpu:1 -J job-cifar10-0.001 train.sh -b "128"
+dataset="cifar10" lr="0.01" epochs="100" sbatch gres gpu:1 -J job-cifar10-0.01 train.sh -b "128"
+dataset="mnist" lr="0.001" epochs="100" sbatch gres gpu:1 -J job-mnist-0.001 train.sh -b "128"
+dataset="mnist" lr="0.01" epochs="100" sbatch gres gpu:1 -J job-mnist-0.01 train.sh -b "128"
 ```
 If these jobs have already been scheduled on slurm or if they have finished and created the files in the completion path, they will be skipped.
 
