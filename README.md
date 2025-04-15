@@ -47,7 +47,7 @@ dataset="cifar10" lr="0.01" epochs="100" sbatch gres gpu:1 -J job-cifar10-0.01 t
 dataset="mnist" lr="0.001" epochs="100" sbatch gres gpu:1 -J job-mnist-0.001 train.sh -b "128"
 dataset="mnist" lr="0.01" epochs="100" sbatch gres gpu:1 -J job-mnist-0.01 train.sh -b "128"
 ```
-If these jobs have already been scheduled on slurm or if they have finished and created the files in the completion path, they will be skipped.
+_**❗ If these jobs have already been scheduled on Slurm or have finished and created the files in the completion path, they’ll be automatically skipped! ✨**_
 
 3. You can also submit only a specific job grids or grid from a different config file:
 ```bash
