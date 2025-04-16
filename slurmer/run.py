@@ -71,7 +71,7 @@ class JobSubmitter:
     def __init__(self, config_path: str):
         with open(config_path) as f:
             self.config = yaml.safe_load(f)
-        self.running_jobs = self.get_job_queue()
+        self.submitted_jobs = self.get_job_queue()
 
     def get_job_queue(self) -> List[str]:
         """Get list of job names currently queued or runnning for the current user."""
@@ -171,8 +171,8 @@ class JobSubmitter:
         param_dicts_to_run = []
         for param_dict in grid.params:
             skip_reason = grid.skip_reason(param_dict)
-            if grid.job_name(param_dict) in self.running_jobs:
-                skip_reason = "Job already running"
+            if grid.job_name(param_dict) in self.submitted_jobs:
+                skip_reason = "Job already submitted"
 
             skip_reasons.append(skip_reason)
             if skip_reason == "None":
