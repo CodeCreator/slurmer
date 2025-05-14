@@ -68,10 +68,12 @@ class Grid:
 
 
 class JobSubmitter:
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, limit: int = -1):
         with open(config_path) as f:
             self.config = yaml.safe_load(f)
         self.submitted_jobs = self.get_job_queue()
+        self.limit = limit
+        self.num_submitted = 0
 
     def get_job_queue(self) -> List[str]:
         """Get list of job names currently queued or runnning for the current user."""
@@ -173,10 +175,13 @@ class JobSubmitter:
             skip_reason = grid.skip_reason(param_dict)
             if grid.job_name(param_dict) in self.submitted_jobs:
                 skip_reason = "Job already submitted"
-
+            elif self.num_submitted >= self.limit and self.limit > -1:
+                skip_reason = "Job submission limit reached"
+            
             skip_reasons.append(skip_reason)
             if skip_reason == "None":
                 param_dicts_to_run.append(param_dict)
+                self.num_submitted += 1
 
         counts = {reason: skip_reasons.count(reason) for reason in set(skip_reasons)}
         counts_formatted = ", ".join(f"{k}: {v}" for k, v in counts.items())
@@ -191,17 +196,9 @@ class JobSubmitter:
                 job_id = self.submit_job(cmd, dry_run)
                 if job_id:
                     previous_job_id = job_id
-
-    def submit_many(self, selection: list, dry_run: bool = False, interactive: bool = False, slurm_overrides: Optional[List[str]] = None):
-        """Submit all grids in the configuration."""
-        if not selection:
-            selection = list(self.config.keys())
-
-        for grid_id in selection:
-            if grid_id not in self.config:
-                raise ValueError(f"Grid {grid_id} not found in configuration")
-
-            self.submit_grid(grid_id, dry_run, interactive, slurm_overrides)
+   
+    def all_grids(self):
+        return list(self.config.keys())
 
 def main():
     parser = argparse.ArgumentParser(description="Submit SLURM jobs based on YAML configuration")
@@ -209,11 +206,19 @@ def main():
     parser.add_argument("-c", "--config", default="runs.yaml", help="Path to YAML configuration file")
     parser.add_argument("-d", "--dry-run", action="store_true", help="Print commands without submitting")
     parser.add_argument("-i", "--interactive", action="store_true", help="Get interactive commands instead")
-    parser.add_argument("--slurm-arg", type=str, nargs="*", help="Override slurm commands globally")
+    parser.add_argument("-a", "--slurm-arg", type=str, nargs="*", help="Override slurm commands globally")
+    parser.add_argument("-n", "--limit", type=int, default=-1, help="Only submit up to n jobs (not counting job chaining)")
     args = parser.parse_args()
 
-    submitter = JobSubmitter(args.config)
-    submitter.submit_many(args.grids, dry_run=args.dry_run, interactive=args.interactive, slurm_overrides=args.slurm_arg)
+    submitter = JobSubmitter(args.config, args.limit)
+    grids = submitter.all_grids() if not args.grids else args.grids
+
+    for grid_id in grids:
+        if grid_id not in submitter.all_grids():
+            raise ValueError(f"Grid {grid_id} not found in configuration")
+
+        submitter.submit_grid(grid_id, args.dry_run, args.interactive, args.slurm_arg)
+
 
 
 if __name__ == "__main__":
