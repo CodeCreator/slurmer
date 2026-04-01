@@ -18,7 +18,9 @@ class SpecialParameter:
 
     range: List[int] | None = None
 
-    def __iter__(self) -> Iterable[str | int]:
+    groups: List[Dict[str, ParameterValue]] | None = None
+
+    def __iter__(self) -> Iterable[str | int | float]:
         if self.glob:
             files = sorted(glob.glob(
                 os.path.expanduser(self.glob),
@@ -31,10 +33,14 @@ class SpecialParameter:
             yield from files
         elif self.range:
             yield from list(range(*self.range))
+        
+        elif self.groups:
+            # each item in the group list is a dictionary of key-value pairs
+            yield from self.groups
 
 
 ParameterDict = Dict[str, ParameterValue]
-Parameters = Dict[str, ParameterValue | SpecialParameter | List[ParameterValue]]
+Parameters = Dict[str, ParameterValue | SpecialParameter | List[ParameterValue] | List[ParameterDict]]
 
 
 def split_variables_and_arguments(param_dict: ParameterDict) -> Tuple[ParameterDict, ParameterDict]:
@@ -84,4 +90,11 @@ def normalize_parameters(params: Parameters | List[Parameters]) -> Iterable[Para
         keys = list(grid_params.keys())
         values = [grid_params[k] for k in keys]
         for combination in itertools.product(*values):
-            yield dict(zip(keys, combination))
+            # flatten the grouped parameters into the combination
+            combo = dict(zip(keys, combination))
+            for k in keys:
+                if k.lower().startswith("group"):
+                    v = combo.pop(k)
+                    combo.update(v)
+                    
+            yield combo

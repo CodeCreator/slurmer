@@ -28,24 +28,36 @@ pip install -e .
 
 ```yaml
 example_grid:
-  name: "job-{dataset}-{lr}"
+  name: "job-{dataset}-{lr}-{bsz}-{steps}"
   script: "train.sh"
   params:
     dataset: ["cifar10", "mnist"]
     lr: [0.001, 0.01]
     epochs: 100
     "-b": 128  # batch size as argument to the script!
+    # group_x parameters allow you to group parameters together (e.g., to control total number of tokens)
+    group_1:
+      groups:
+        - bsz: 128
+          steps: 1000
+        - bsz: 256
+          steps: 500
   slurm:
-    gres: "gpu:1"
-  completion: "~/results/{dataset}_model_lr{lr}.pth"
+    "--gres": "gpu:1"
+    "-n": 1
+  completion: "~/results/{dataset}_model_lr{lr}_bsz{bsz}_steps{steps}.pth"
 ```
 
-2. Submit all your jobs by running `slurmer`. This will submit the following jobs:
+2. Submit all your jobs by running `slurmer -c runs.yaml`. This will submit the following jobs:
 ```bash
-dataset="cifar10" lr="0.001" epochs="100" sbatch gres gpu:1 -J job-cifar10-0.001 train.sh -b "128"
-dataset="cifar10" lr="0.01" epochs="100" sbatch gres gpu:1 -J job-cifar10-0.01 train.sh -b "128"
-dataset="mnist" lr="0.001" epochs="100" sbatch gres gpu:1 -J job-mnist-0.001 train.sh -b "128"
-dataset="mnist" lr="0.01" epochs="100" sbatch gres gpu:1 -J job-mnist-0.01 train.sh -b "128"
+dataset="cifar10" lr="0.001" epochs="100" bsz="128" steps="1000" sbatch gres gpu:1 -J job-cifar10-0.001-128-1000 train.sh -b "128"
+dataset="cifar10" lr="0.01" epochs="100" bsz="128" steps="1000" sbatch gres gpu:1 -J job-cifar10-0.01-128-1000 train.sh -b "128"
+dataset="mnist" lr="0.001" epochs="100" bsz="128" steps="1000" sbatch gres gpu:1 -J job-mnist-0.001-128-1000 train.sh -b "128"
+dataset="mnist" lr="0.01" epochs="100" bsz="128" steps="1000" sbatch gres gpu:1 -J job-mnist-0.01-128-1000 train.sh -b "128"
+dataset="cifar10" lr="0.001" epochs="100" bsz="256" steps="500" sbatch gres gpu:1 -J job-cifar10-0.001-256-500 train.sh -b "128"
+dataset="cifar10" lr="0.01" epochs="100" bsz="256" steps="500" sbatch gres gpu:1 -J job-cifar10-0.01-256-500 train.sh -b "128"
+dataset="mnist" lr="0.001" epochs="100" bsz="256" steps="500" sbatch gres gpu:1 -J job-mnist-0.001-256-500 train.sh -b "128"
+dataset="mnist" lr="0.01" epochs="100" bsz="256" steps="500" sbatch gres gpu:1 -J job-mnist-0.01-256-500 train.sh -b "128"
 ```
 _**❗ If these jobs have already been scheduled on Slurm or have finished and created the files in the completion path, they’ll be automatically skipped! ✨**_
 
@@ -65,3 +77,4 @@ slurmer --dry-run
 - Job dependency chaining
 - Precondition and completion checks
 - Custom job naming
+- Grouping parameters
